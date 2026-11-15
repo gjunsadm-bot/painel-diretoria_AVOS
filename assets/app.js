@@ -262,36 +262,44 @@
   /*                               DRE                                 */
   /* ================================================================= */
   PAGES.dre = {
-    title: 'DRE gerencial de caixa', sub: 'Seleção da planilha: Todos Bambuzal (KOA, ALOHI, KALA, NALU e Bambuzal) · R$ mil · % sobre a receita bruta',
+    title: 'DRE Empreendimentos', sub: 'DRE gerencial de caixa por empreendimento · R$ mil · % sobre a receita bruta',
     html() {
-      const keep = D.dre_anos.map((y, i) => D.dre.some(l => Math.abs(l.anos[i]) > 0.5) ? i : -1).filter(i => i >= 0);
-      const rows = D.dre.map(l => {
-        const isM = /^Margem/.test(l.lin), isT = /^\(=\)/.test(l.lin) || /^Saldo de caixa final/.test(l.lin);
-        const f = v => isM ? pct(v) : mil(v * 1000);
-        return `<tr class="${isT ? 'total' : ''}"><td>${esc(l.lin)}</td><td><b>${f(l.tot)}</b></td><td class="dim">${l.pct == null || isM ? '' : pct(l.pct)}</td>${keep.map(i => `<td>${f(l.anos[i])}</td>`).join('')}</tr>`;
-      }).join('');
-      const fmtInd = (n, v) => {
-        if (v == null || v === '') return '';
-        if (typeof v === 'string') return esc(v);
-        if (/m²\)$|^Lotes/.test(n)) return N1.format(v);
-        if (/Margem|\/ VGV|exposição máxima|TIR/.test(n) && Math.abs(v) < 5) return pct(v);
-        if (/VGV \/ custo/.test(n)) return N2.format(v) + 'x';
-        if (/^Meses/.test(n)) return int(v);
-        return full(v);
-      };
-      const ind = D.dre_ind.map(([n, v]) => (v == null || v === '') ? `<div class="h">${esc(n)}</div>` : `<div>${esc(n)}</div><div>${fmtInd(n, v)}</div>`).join('');
+      const R = D.dre_all;
+      const nome = o => o === 'Todos' ? 'Todos' : o === 'Todos Bambuzal' ? 'Todos Bambuzal' : title(o);
       return `
-      <div class="grid g32">
-        ${card('Demonstrativo por ano', 'Fluxo de caixa gerencial · valores negativos entre parênteses',
-          `<div class="tbl-wrap"><table class="t"><thead><tr><th>R$ mil</th><th>Total</th><th>% rec.</th>${keep.map(i => `<th>${D.dre_anos[i]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`)}
-        ${card('Indicadores do empreendimento', 'Produto, custo de obra, rentabilidade e exposição', `<div class="ind">${ind}</div>`)}
+      <div class="selbar">
+        <label for="dreSel">Empreendimento</label>
+        <select id="dreSel">${R.opcoes.map(o => `<option value="${esc(o)}"${o === 'Todos' ? ' selected' : ''}>${esc(nome(o))}</option>`).join('')}</select>
+        <span class="selhint">selecione na lista (ou "Todos")</span>
       </div>
-      ${card('Saldo acumulado antes dos sócios', 'Fluxo mensal acumulado · Todos Bambuzal', cv('c_dre_saldo'))}`;
+      ${card('Demonstrativo por ano', 'Fluxo de caixa gerencial · valores negativos entre parênteses', '<div class="tbl-wrap" id="dreTbl"></div>')}
+      <div class="grid g23" style="margin-top:16px">
+        ${card('Indicadores do empreendimento', 'Produto, custo de obra, rentabilidade e exposição', '<div class="ind" id="dreInd"></div>')}
+        ${card('Saldo acumulado antes dos sócios', '<span id="dreChartNote"></span>', cv('c_dre_saldo', 'xtall'))}
+      </div>`;
     },
-    charts() {
-      const s = D.dre_saldo.filter(x => x[0] >= '2022-01' && x[0] <= '2026-10');
-      chart('c_dre_saldo', { type: 'line', data: { labels: s.map(x => ym(x[0])), datasets: [{ label: 'Saldo acumulado', data: s.map(x => x[1]), borderColor: C.ink, backgroundColor: 'rgba(28,28,27,.06)', fill: true, tension: .2 }] },
-        options: { interaction: { mode: 'index', intersect: false }, scales: { x: Object.assign({}, plainAxis, { ticks: { maxRotation: 0, maxTicksLimit: 14 } }), y: moneyAxis }, plugins: { legend: { display: false }, tooltip: moneyTip } } });
+    after() {
+      const R = D.dre_all;
+      const fmtI = ([t, v]) => t === 'n' ? (Number.isInteger(v) ? int(v) : N1.format(v)) : t === 'r' ? full(v) : t === 'p' ? pct(v) : t === 'x' ? N2.format(v) + 'x' : t === 'i' ? int(v) : esc(v);
+      const render = () => {
+        const sel = $('#dreSel').value, X = R.dados[sel];
+        const keep = R.anos.map((y, i) => X.linhas.some(l => !/^Margem|^Saldo/.test(l.lin) && Math.abs(l.anos[i]) > 0.5) ? i : -1).filter(i => i >= 0);
+        const rows = X.linhas.map(l => {
+          const isM = /^Margem/.test(l.lin), isT = /^\(=\)/.test(l.lin) || /^Saldo de caixa final/.test(l.lin);
+          const f = v => isM ? pct(v) : mil(v * 1000);
+          return `<tr class="${isT ? 'total' : ''}${isM ? ' mrow' : ''}"><td>${esc(l.lin)}</td><td><b>${f(l.tot)}</b></td><td class="dim">${l.pct == null ? '' : pct(l.pct)}</td>${keep.map(i => `<td>${f(l.anos[i])}</td>`).join('')}</tr>`;
+        }).join('');
+        $('#dreTbl').innerHTML = keep.length ? `<table class="t"><thead><tr><th>R$ mil</th><th>Total</th><th>% rec.</th>${keep.map(i => `<th>${R.anos[i]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`
+          : '<div class="dim" style="padding:20px 0">Sem movimentação registrada para esta seleção.</div>';
+        $('#dreInd').innerHTML = X.ind.map(([n, v]) => v == null ? `<div class="h">${esc(n)}</div>` : `<div class="r"><span>${esc(n)}</span><b>${fmtI(v)}</b></div>`).join('');
+        const first = X.saldo.findIndex(x => Math.abs(x[1]) > 0.5);
+        const s = first < 0 ? [] : X.saldo.slice(first).filter(x => x[0] <= '2026-10');
+        $('#dreChartNote').textContent = 'Fluxo mensal acumulado (operação + financeiro) · ' + $('#dreSel').selectedOptions[0].text;
+        chart('c_dre_saldo', { type: 'line', data: { labels: s.map(x => ym(x[0])), datasets: [{ label: 'Saldo acumulado', data: s.map(x => x[1]), borderColor: C.ink, backgroundColor: 'rgba(28,28,27,.06)', fill: true, tension: .2 }] },
+          options: { interaction: { mode: 'index', intersect: false }, scales: { x: Object.assign({}, plainAxis, { ticks: { maxRotation: 0, maxTicksLimit: 14 } }), y: moneyAxis }, plugins: { legend: { display: false }, tooltip: moneyTip } } });
+      };
+      $('#dreSel').addEventListener('change', render);
+      render();
     }
   };
 

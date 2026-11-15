@@ -164,6 +164,10 @@ def main():
     T={'cx':os.path.join(tmp,'cx.txt'),'cr':os.path.join(tmp,'cr.txt'),'vgv':os.path.join(tmp,'vgv.txt')}
     dump_xlsb(a.caixa,ABAS_CX,T['cx']); dump_xlsb(a.receber,ABAS_CR,T['cr']); dump_xlsx(a.vgv,ABAS_VGV,T['vgv'])
     D=extrair(T)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import dre_calc
+    D['dre_all']=dre_calc.todas(a.caixa)
+    for k in ('dre','dre_ind','dre_saldo','dre_sel','dre_anos'): D.pop(k,None)
     D['gerado_em']=datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
     criptografar(D,a.usuario,a.senha,a.saida)
     print('OK ->',os.path.abspath(a.saida))
