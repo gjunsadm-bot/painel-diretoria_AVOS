@@ -61,7 +61,7 @@
   }
   const full = v => (v < 0 ? '−' : '') + 'R$ ' + N0.format(Math.abs(v));
   const mil = v => { if (v == null || isNaN(v)) return '–'; const r = Math.round(v / 1000); return r === 0 ? '<span class="dim">–</span>' : (r < 0 ? '<span class="neg">(' + N0.format(-r) + ')</span>' : N0.format(r)); };
-  const pct = (v, d = 1) => (v == null || isNaN(v)) ? 'n.a.' : nf(d).format(v * 100) + '%';
+  const pct = (v, d = 1) => (v == null || isNaN(v)) ? 'n.a.' : nf(d).format(Math.abs(v * 100) < 0.5 * Math.pow(10, -d) ? 0 : v * 100) + '%';
   const int = v => N0.format(v);
   const ym = s => { const [y, m] = s.split('-'); return MESES[+m - 1] + '/' + y.slice(2); };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -336,6 +336,27 @@
   PAGES.vgv = {
     title: 'VGV e vendas', sub: 'Painel de VGV e carteira · loteamentos Avos · data base 31/10/2026',
     html() {
+      const ord = D.vgv_emp.filter(e => e.nome !== 'Total').sort((x, y) => (y.estoque > 0) - (x.estoque > 0) || y.vgv_total - x.vgv_total);
+      const TOT = D.vgv_emp.find(e => e.nome === 'Total');
+      const dash = '<span class="dim">–</span>';
+      const vgvHead = `<thead>
+        <tr class="grp"><th rowspan="2" class="l first">Empreendimento</th><th colspan="4" class="g1">Lotes</th><th colspan="3" class="g2">VGV (R$ mil)</th><th colspan="4" class="g3">Velocidade de vendas</th><th colspan="3" class="g4">Preço e comissão</th><th rowspan="2" class="g5">Distratos</th></tr>
+        <tr><th class="g1">Total</th><th class="g1">Vendidos</th><th class="g1">Disponíveis</th><th class="g1 l">% vendido</th>
+            <th class="g2">Vendido</th><th class="g2">Estoque</th><th class="g2">Total</th>
+            <th class="g3">Vendas 90d</th><th class="g3">Vendas/mês</th><th class="g3">VSO 90d</th><th class="g3">Meses estoque</th>
+            <th class="g4">Ticket médio</th><th class="g4">Desconto</th><th class="g4">Comissão</th></tr></thead>`;
+      const vrow = (e, T) => {
+        const p = e.lotes ? e.vendidos / e.lotes : 0;
+        return `<tr class="${T ? 'total' : ''}">
+          <td class="l first">${T ? '<b>Total</b>' : `<div class="vn">${sw(EMP_COLOR[e.nome])}<b>${esc(title(e.nome))}</b></div><div class="vs">${statusChip(e.status)}</div>`}</td>
+          <td class="g1">${int(e.lotes)}</td><td class="g1">${int(e.vendidos)}</td><td class="g1"><b>${int(e.disp)}</b></td>
+          <td class="g1 l"><div class="pbar"><div class="pb"><i style="width:${p * 100}%"></i></div><span>${pct(p)}</span></div></td>
+          <td class="g2">${mil(e.vgv_vendido)}</td><td class="g2">${e.estoque ? '<b>' + mil(e.estoque) + '</b>' : dash}</td><td class="g2">${mil(e.vgv_total)}</td>
+          <td class="g3">${int(e.v90)}</td><td class="g3">${N1.format(e.vmes)}</td><td class="g3">${pct(e.vso)}</td><td class="g3">${e.meses ? N1.format(e.meses) : dash}</td>
+          <td class="g4">${mil(e.ticket_v)}</td><td class="g4 ${e.desconto > 0.1 ? 'warnv' : ''}">${pct(e.desconto)}</td><td class="g4">${pct(e.com_pct)}</td>
+          <td class="g5">${int(e.distratos)}</td></tr>`;
+      };
+      const vgvRows = ord.map(e => vrow(e, false)).join('') + vrow(TOT, true);
       const v = D.vgv_kpi;
       const rows = D.vgv_emp.map(e => { const T = e.nome === 'Total'; return `<tr class="${T ? 'total' : ''}"><td>${T ? 'Total' : sw(EMP_COLOR[e.nome]) + esc(title(e.nome)) + '<div style="margin:4px 0 0 16px">' + statusChip(e.status) + '</div>'}</td>
         <td>${int(e.lotes)}</td><td>${int(e.vendidos)}</td><td>${int(e.disp)}</td><td>${pct(e.pct)}</td>
@@ -352,8 +373,7 @@
         ${kpi('Desconto vs. tabela', pct(v.desc), 'média ponderada')}
         ${kpi('Comissão média', pct(v.comissao), 'sobre o valor vendido')}
       </div>
-      ${card('Desempenho por empreendimento', 'Valores em R$ mil · VSO = vendas ÷ (vendas + estoque) em 90 dias',
-        `<div class="tbl-wrap"><table class="t"><thead><tr><th>Empreendimento · status</th><th>Lotes</th><th>Vend.</th><th>Disp.</th><th>% vend.</th><th>VGV vend.</th><th>Estoque</th><th>VGV total</th><th>Ticket</th><th>Desc.</th><th>Vd. 90d</th><th>Meses</th><th>VSO</th><th>Com.</th><th>Distr.</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
+      ${card('Desempenho por empreendimento', 'Valores em R$ mil · VSO = vendas ÷ (vendas + estoque) em 90 dias · ordenado por estoque disponível', `<div class="tbl-wrap"><table class="t vt">${vgvHead}<tbody>${vgvRows}</tbody></table></div>`)}
       <div class="grid g32" style="margin-top:16px">
         ${card('Vendas mensais · últimos 24 meses', 'Lotes vendidos por mês e empreendimento', cv('c_vgv_vendas', 'tall'))}
         ${card('Top 10 imobiliárias parceiras', 'Valor vendido acumulado', cv('c_vgv_top', 'tall'))}
