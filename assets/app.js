@@ -149,6 +149,19 @@
     window.scrollTo(0, 0);
   }
 
+
+  function dreTableHTML(X, anos) {
+    const keep = anos.map((y, i) => i);
+    const pj = y => typeof y === 'string' ? 'proj' : '';
+    const hd = y => typeof y === 'string' ? '2027+<br><span>previsão</span>' : `${y === 2026 ? '2026*' : y}<br><span>${y === 2026 ? 'real+proj.' : 'real'}</span>`;
+    const rows = X.linhas.map(l => {
+      const isM = /^Margem/.test(l.lin), isT = /^\(=\)/.test(l.lin) || /^Saldo de caixa final/.test(l.lin);
+      const f = v => isM ? pct(v) : mil(v * 1000);
+      return `<tr class="${isT ? 'total' : ''}${isM ? ' mrow' : ''}"><td class="stick">${esc(l.lin)}</td><td class="acc"><b>${f(l.tot)}</b></td><td class="dim acc">${l.pct == null ? '' : pct(l.pct)}</td>${keep.map(i => `<td class="${pj(anos[i])}">${f(l.anos[i])}</td>`).join('')}</tr>`;
+    }).join('');
+    return `<table class="t evo"><thead><tr><th class="stick">R$ mil</th><th class="acc">Total</th><th class="acc">% rec.</th>${keep.map(i => `<th class="${pj(anos[i])}">${hd(anos[i])}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
   /* ---------------- helpers de dados ---------------- */
   const realized = () => D.fluxo_mensal.filter(m => m.m <= '2026-10');
   const projected = () => D.fluxo_mensal.filter(m => m.m > '2026-10');
@@ -225,22 +238,6 @@
         <td class="avos">${T ? mil(recAvosTot) : x.avos == null ? '<span class="dim">–</span>' : mil(x.avos)}</td>
         <td>${mil(x.receitas)}</td><td>${mil(x.custos)}</td><td>${mil(x.resultado)}</td><td>${x.margem == null ? '<span class="dim">n.a.</span>' : pct(x.margem)}</td>
         <td>${mil(x.fin)}</td><td>${mil(x.aportes)}</td><td>${mil(x.retirada)}</td><td>${mil(x.distrib)}</td><td><b>${mil(x.geracao)}</b></td></tr>`; }).join('');
-      const Y = {};
-      D.fluxo_mensal.forEach(m => {
-        const y = m.m.slice(0, 4), o = Y[y] = Y[y] || { receita: 0, custos: 0, fin: 0, socios: 0, geracao: 0, real: 0 };
-        const rec = m.receita + m.distrato + m.avencer + m.comissao + m.impostos, cus = costSum(m) - m.comissao - m.impostos;
-        o.receita += rec; o.custos += cus; o.fin += m.fin; o.socios += m.aporte_cap + m.aporte_soc + m.retirada + m.lucro_grupo + m.lucro_terc; o.geracao += m.geracao;
-      });
-      const anos = Object.keys(Y).filter(y => Object.values(Y[y]).some(v => Math.abs(v) > 500));
-      anos.forEach(y => { const o = Y[y]; o.resultado = o.receita + o.custos; o.margem = o.receita ? o.resultado / o.receita : null; });
-      const R = realized(), RT = { receita: 0, custos: 0, fin: 0, socios: 0, geracao: 0 };
-      R.forEach(m => { RT.receita += m.receita + m.distrato + m.comissao + m.impostos; RT.custos += costSum(m) - m.comissao - m.impostos; RT.fin += m.fin; RT.socios += m.aporte_cap + m.aporte_soc + m.retirada + m.lucro_grupo + m.lucro_terc; RT.geracao += m.geracao; });
-      RT.resultado = RT.receita + RT.custos; RT.margem = RT.resultado / RT.receita;
-      const TT = {}; ['receita', 'custos', 'resultado', 'fin', 'socios', 'geracao'].forEach(kk => TT[kk] = anos.reduce((t, y) => t + Y[y][kk], 0)); TT.margem = TT.resultado / TT.receita;
-      const lin = [['Receita líquida', 'receita'], ['Custos operacionais', 'custos'], ['Resultado operacional', 'resultado'], ['Margem operacional', 'margem'], ['Resultado financeiro', 'fin'], ['Sócios e distribuições', 'socios'], ['Geração líquida de caixa', 'geracao']];
-      const fv = (kk, v) => kk === 'margem' ? (v == null ? '<span class="dim">–</span>' : pct(v)) : mil(v);
-      const evo = lin.map(([n, kk]) => `<tr class="${kk === 'geracao' ? 'total' : ''}${kk === 'margem' ? ' mrow' : ''}"><td class="stick">${n}</td><td class="acc"><b>${fv(kk, RT[kk])}</b></td><td class="acc">${fv(kk, TT[kk])}</td>${anos.map(y => `<td class="${y > '2026' ? 'proj' : ''}">${fv(kk, Y[y][kk])}</td>`).join('')}</tr>`).join('');
-      const evoHead = `<th class="stick">Indicador</th><th class="acc">Realizado<br>até out/26</th><th class="acc">Total c/<br>projeção</th>${anos.map(y => `<th class="${y > '2026' ? 'proj' : ''}">${y === '2026' ? '2026*' : y}${y > '2026' ? '<br><span>proj.</span>' : y === '2026' ? '<br><span>real+proj.</span>' : '<br><span>real</span>'}</th>`).join('')}`;
       return `
       <div class="kpis">
         ${kpi('Receita líquida', money(k.receita), 'vendas − distratos')}
@@ -252,7 +249,7 @@
       </div>
       ${card('Desempenho por empreendimento · fluxo completo (realizado + previsão)', 'R$ mil · mesmos totais da aba Fluxo grupo de cada empreendimento: Receitas = receita − distratos + parcelas a vencer; Custos = impostos, terreno, aprovação, obra (com previsão), comissão, marketing, administrativo e taxa; Distribuições = lucro grupo + lucro a terceiros · Receita Avos = coluna "Total Avos" da aba Fluxo grupo: (receitas realizadas − distratos + parcelas a vencer) × % de participação Avos (lista depara; Todos Bambuzal = 60%; sem % cadastrado = 100%); total = soma das linhas · AVOS = holding',
         `<div class="tbl-wrap"><table class="t"><thead><tr><th>Empreendimento</th><th class="l">Status</th><th>% Avos</th><th>Receita Avos</th><th>Receitas</th><th>Custos oper.</th><th>Resultado oper.</th><th>Margem</th><th>Financeiro</th><th>Aportes</th><th>Retirada sócios</th><th>Distribuições</th><th>Geração líq.</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
-      <div style="margin-top:16px">${card('Evolução anual consolidada · todos os anos do fluxo', 'R$ mil · realizado até out/26; *2026 = jan–out realizado + nov–dez projetado; a partir de 2027, projeção pelas parcelas a vencer, impostos (4%) e obra prevista · receita líquida = vendas − distratos − comissões − impostos, como no Painel executivo · role para o lado para ver todos os anos', `<div class="tbl-wrap"><table class="t evo"><thead><tr>${evoHead}</tr></thead><tbody>${evo}</tbody></table></div>`)}</div>
+      <div style="margin-top:16px">${card('Evolução anual consolidada · grupo (Todos)', 'R$ mil · mesmo demonstrativo da aba DRE por empreendimento com a seleção "Todos", montado a partir da aba Fluxo grupo · *2026 = jan–out realizado + nov–dez projetado · 2027+ = previsão (parcelas a vencer, impostos 4% e obra prevista)', `<div class="tbl-wrap">${dreTableHTML(D.dre_all.dados['Todos'], D.dre_all.anos)}</div>`)}</div>
       <div class="grid g2" style="margin-top:16px">
         ${card('Fluxo mensal realizado · últimos 24 meses', 'Entradas (receita − distratos) e saídas operacionais', cv('c_cx_mensal'))}
         ${card('Composição das saídas operacionais', 'Acumulado de todo o período (inclui previsão de obra)', cv('c_cx_comp'))}
@@ -305,16 +302,7 @@
       const fmtI = ([t, v]) => t === 'n' ? (Number.isInteger(v) ? int(v) : N1.format(v)) : t === 'r' ? full(v) : t === 'p' ? pct(v) : t === 'x' ? N2.format(v) + 'x' : t === 'i' ? int(v) : esc(v);
       const render = () => {
         const sel = $('#dreSel').value, X = R.dados[sel];
-        const keep = R.anos.map((y, i) => i);
-        const pj = y => typeof y === 'string' ? 'proj' : '';
-        const hd = y => typeof y === 'string' ? '2027+<br><span>previsão</span>' : `${y === 2026 ? '2026*' : y}<br><span>${y === 2026 ? 'real+proj.' : 'real'}</span>`;
-        const rows = X.linhas.map(l => {
-          const isM = /^Margem/.test(l.lin), isT = /^\(=\)/.test(l.lin) || /^Saldo de caixa final/.test(l.lin);
-          const f = v => isM ? pct(v) : mil(v * 1000);
-          return `<tr class="${isT ? 'total' : ''}${isM ? ' mrow' : ''}"><td class="stick">${esc(l.lin)}</td><td class="acc"><b>${f(l.tot)}</b></td><td class="dim acc">${l.pct == null ? '' : pct(l.pct)}</td>${keep.map(i => `<td class="${pj(R.anos[i])}">${f(l.anos[i])}</td>`).join('')}</tr>`;
-        }).join('');
-        $('#dreTbl').innerHTML = keep.length ? `<table class="t evo"><thead><tr><th class="stick">R$ mil</th><th class="acc">Total</th><th class="acc">% rec.</th>${keep.map(i => `<th class="${pj(R.anos[i])}">${hd(R.anos[i])}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`
-          : '<div class="dim" style="padding:20px 0">Sem movimentação registrada para esta seleção.</div>';
+        $('#dreTbl').innerHTML = dreTableHTML(X, R.anos);
         $('#dreInd').innerHTML = X.ind.map(([n, v]) => v == null ? `<div class="h">${esc(n)}</div>` : `<div class="r"><span>${esc(n)}</span><b>${fmtI(v)}</b></div>`).join('');
         const first = X.saldo.findIndex(x => Math.abs(x[1]) > 0.5);
         const s = first < 0 ? [] : X.saldo.slice(first);
