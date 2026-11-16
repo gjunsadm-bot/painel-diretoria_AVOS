@@ -162,6 +162,21 @@
     return `<table class="t evo"><thead><tr><th class="stick">R$ mil</th><th class="acc">Total</th><th class="acc">% rec.</th>${keep.map(i => `<th class="${pj(anos[i])}">${hd(anos[i])}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
   }
 
+
+  function evoResumo() {
+    const X = D.dre_all.dados['Todos'], anos = D.dre_all.anos;
+    const L = n => X.linhas.find(l => l.lin.startsWith(n));
+    const rl = L('(=) Receita líquida'), ro = L('(=) Resultado operacional'), mg = L('Margem operacional'), fi = L('(±) Resultado financeiro'), fa = L('(=) Fluxo antes'), gl = L('(=) Geração');
+    const sub = (a, b) => ({ tot: a.tot - b.tot, anos: a.anos.map((v, i) => v - b.anos[i]) });
+    const lin = [['Receita líquida', rl], ['Custos operacionais', sub(ro, rl)], ['Resultado operacional', ro], ['Margem operacional', mg, 'm'],
+      ['Resultado financeiro', fi], ['Sócios e distribuições', sub(gl, fa)], ['Geração líquida de caixa', gl, 't']];
+    const pj = y => typeof y === 'string' ? 'proj' : '';
+    const hd = y => typeof y === 'string' ? '2027+<br><span>previsão</span>' : `${y === 2026 ? '2026*' : y}<br><span>${y === 2026 ? 'real+proj.' : 'real'}</span>`;
+    const f = (m, v) => m === 'm' ? pct(v) : mil(v * 1000);
+    const rows = lin.map(([n, o, m]) => `<tr class="${m === 't' ? 'total' : ''}${m === 'm' ? ' mrow' : ''}"><td class="stick">${n}</td><td class="acc"><b>${f(m, o.tot)}</b></td>${o.anos.map((v, i) => `<td class="${pj(anos[i])}">${f(m, v)}</td>`).join('')}</tr>`).join('');
+    return `<table class="t evo"><thead><tr><th class="stick">Indicador</th><th class="acc">Total</th>${anos.map(y => `<th class="${pj(y)}">${hd(y)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
   /* ---------------- helpers de dados ---------------- */
   const realized = () => D.fluxo_mensal.filter(m => m.m <= '2026-10');
   const projected = () => D.fluxo_mensal.filter(m => m.m > '2026-10');
@@ -249,7 +264,7 @@
       </div>
       ${card('Desempenho por empreendimento · fluxo completo (realizado + previsão)', 'R$ mil · mesmos totais da aba Fluxo grupo de cada empreendimento: Receitas = receita − distratos + parcelas a vencer; Custos = impostos, terreno, aprovação, obra (com previsão), comissão, marketing, administrativo e taxa; Distribuições = lucro grupo + lucro a terceiros · Receita Avos = coluna "Total Avos" da aba Fluxo grupo: (receitas realizadas − distratos + parcelas a vencer) × % de participação Avos (lista depara; Todos Bambuzal = 60%; sem % cadastrado = 100%); total = soma das linhas · AVOS = holding',
         `<div class="tbl-wrap"><table class="t"><thead><tr><th>Empreendimento</th><th class="l">Status</th><th>% Avos</th><th>Receita Avos</th><th>Receitas</th><th>Custos oper.</th><th>Resultado oper.</th><th>Margem</th><th>Financeiro</th><th>Aportes</th><th>Retirada sócios</th><th>Distribuições</th><th>Geração líq.</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
-      <div style="margin-top:16px">${card('Evolução anual consolidada · grupo (Todos)', 'R$ mil · mesmo demonstrativo da aba DRE por empreendimento com a seleção "Todos", montado a partir da aba Fluxo grupo · *2026 = jan–out realizado + nov–dez projetado · 2027+ = previsão (parcelas a vencer, impostos 4% e obra prevista)', `<div class="tbl-wrap">${dreTableHTML(D.dre_all.dados['Todos'], D.dre_all.anos)}</div>`)}</div>
+      <div style="margin-top:16px">${card('Evolução anual consolidada', 'R$ mil · valores da aba DRE por empreendimento com a seleção "Todos" (montada a partir da Fluxo grupo) · *2026 = jan–out realizado + nov–dez projetado · 2027+ = previsão (parcelas a vencer, impostos 4% e obra prevista) · margem = resultado operacional ÷ receita bruta, como na DRE', `<div class="tbl-wrap">${evoResumo()}</div>`)}</div>
       <div class="grid g2" style="margin-top:16px">
         ${card('Fluxo mensal realizado · últimos 24 meses', 'Entradas (receita − distratos) e saídas operacionais', cv('c_cx_mensal'))}
         ${card('Composição das saídas operacionais', 'Acumulado de todo o período (inclui previsão de obra)', cv('c_cx_comp'))}
