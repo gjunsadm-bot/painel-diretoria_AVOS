@@ -152,7 +152,7 @@
   /* ---------------- helpers de dados ---------------- */
   const realized = () => D.fluxo_mensal.filter(m => m.m <= '2026-10');
   const projected = () => D.fluxo_mensal.filter(m => m.m > '2026-10');
-  const COST_KEYS = [['obra', 'Obra'], ['terreno', 'Terreno'], ['impostos', 'Impostos'], ['comissao', 'Comissão'], ['adm', 'Administrativo'], ['marketing', 'Marketing e plantão'], ['aprovacao', 'Aprovação']];
+  const COST_KEYS = [['obra', 'Obra'], ['terreno', 'Terreno'], ['impostos', 'Impostos'], ['comissao', 'Comissão'], ['adm', 'Administrativo'], ['marketing', 'Marketing e plantão'], ['aprovacao', 'Aprovação'], ['taxa', 'Taxa de administração']];
   const costSum = m => COST_KEYS.reduce((a, [k]) => a + m[k], 0);
 
   /* ================================================================= */
@@ -169,7 +169,7 @@
         ${kpi('Receita líquida (caixa)', money(k.receita), 'margem operacional ' + pct(k.margem))}
         ${kpi('VGV total', money(v.vgv), pct(v.pct) + ' do VGV já vendido')}
         ${kpi('Estoque a tabela', money(v.estoque), int(v.disp) + ' lotes · ' + N0.format(v.meses) + ' meses de estoque')}
-        ${kpi('Carteira a receber', money(v.areceber), 'já recebido ' + money(v.recebido))}
+        ${kpi('Carteira a receber', money(r.avencer), 'já recebido ' + money(r.recebido))}
         ${kpi('Inadimplência', pct(r.inad, 2), 'vencido ' + money(r.vencido))}
       </div>
       <div class="grid g2">
@@ -198,7 +198,7 @@
   };
 
   function saldoChart(id) {
-    const all = D.fluxo_mensal.filter(m => m.m <= '2035-12');
+    const all = D.fluxo_mensal.filter(m => m.m <= '2039-12');
     const cut = all.findIndex(m => m.m === '2026-10');
     chart(id, { type: 'line', data: { labels: all.map(m => ym(m.m)), datasets: [
       { label: 'Realizado', data: all.map((m, i) => i <= cut ? m.saldo : null), borderColor: C.ink, backgroundColor: C.ink, fill: false, tension: .2 },
@@ -213,12 +213,30 @@
   PAGES.caixa = {
     title: 'Caixa e resultado', sub: 'Painel executivo, fluxo do grupo e projeção · regime de caixa, acumulado desde 2019 até 31/10/2026',
     html() {
-      const k = D.cx_kpi, a = D.cx_anual;
+      const k = D.cx_kpi;
+      const PT = D.participacao || {};
+      const partOf = e => PT[e.nome] == null ? null : PT[e.nome];
+      const recAvosTot = D.cx_emp.reduce((t, e) => t + (partOf(e) == null ? 0 : e.receita * partOf(e)), 0);
       const rows = D.cx_emp.map(e => `<tr class="${e.nome === 'Total do grupo' ? 'total' : ''}"><td>${esc(e.nome === 'Total do grupo' ? 'Total do grupo' : title(e.nome))}</td><td class="l">${e.status ? statusChip(e.status) : ''}</td>
+        <td class="dim">${partOf(e) == null ? '–' : pct(partOf(e), Math.abs(partOf(e) * 100 - Math.round(partOf(e) * 100)) > 1e-6 ? 2 : 0)}</td><td class="avos">${partOf(e) == null ? (e.nome === 'Total do grupo' ? mil(recAvosTot) : '<span class="dim">–</span>') : mil(e.receita * partOf(e))}</td>
         <td>${mil(e.receita)}</td><td>${mil(e.custos)}</td><td>${mil(e.resultado)}</td><td>${e.margem == null ? '<span class="dim">n.a.</span>' : pct(e.margem)}</td>
         <td>${mil(e.fin)}</td><td>${mil(e.aportes)}</td><td>${mil(e.retirada)}</td><td>${mil(e.distrib)}</td><td><b>${mil(e.geracao)}</b></td></tr>`).join('');
+      const Y = {};
+      D.fluxo_mensal.forEach(m => {
+        const y = m.m.slice(0, 4), o = Y[y] = Y[y] || { receita: 0, custos: 0, fin: 0, socios: 0, geracao: 0, real: 0 };
+        const rec = m.receita + m.distrato + m.avencer + m.comissao + m.impostos, cus = costSum(m) - m.comissao - m.impostos;
+        o.receita += rec; o.custos += cus; o.fin += m.fin; o.socios += m.aporte + m.retirada + m.lucro_grupo + m.lucro_terc; o.geracao += m.geracao;
+      });
+      const anos = Object.keys(Y).filter(y => Object.values(Y[y]).some(v => Math.abs(v) > 500));
+      anos.forEach(y => { const o = Y[y]; o.resultado = o.receita + o.custos; o.margem = o.receita ? o.resultado / o.receita : null; });
+      const R = realized(), RT = { receita: 0, custos: 0, fin: 0, socios: 0, geracao: 0 };
+      R.forEach(m => { RT.receita += m.receita + m.distrato + m.comissao + m.impostos; RT.custos += costSum(m) - m.comissao - m.impostos; RT.fin += m.fin; RT.socios += m.aporte + m.retirada + m.lucro_grupo + m.lucro_terc; RT.geracao += m.geracao; });
+      RT.resultado = RT.receita + RT.custos; RT.margem = RT.resultado / RT.receita;
+      const TT = {}; ['receita', 'custos', 'resultado', 'fin', 'socios', 'geracao'].forEach(kk => TT[kk] = anos.reduce((t, y) => t + Y[y][kk], 0)); TT.margem = TT.resultado / TT.receita;
       const lin = [['Receita líquida', 'receita'], ['Custos operacionais', 'custos'], ['Resultado operacional', 'resultado'], ['Margem operacional', 'margem'], ['Resultado financeiro', 'fin'], ['Sócios e distribuições', 'socios'], ['Geração líquida de caixa', 'geracao']];
-      const evo = lin.map(([n, kk]) => `<tr class="${kk === 'geracao' ? 'total' : ''}"><td>${n}</td><td><b>${kk === 'margem' ? pct(a[kk + '_tot']) : mil(a[kk + '_tot'])}</b></td>${a[kk].map(v => `<td>${kk === 'margem' ? pct(v) : mil(v)}</td>`).join('')}</tr>`).join('');
+      const fv = (kk, v) => kk === 'margem' ? (v == null ? '<span class="dim">–</span>' : pct(v)) : mil(v);
+      const evo = lin.map(([n, kk]) => `<tr class="${kk === 'geracao' ? 'total' : ''}${kk === 'margem' ? ' mrow' : ''}"><td class="stick">${n}</td><td class="acc"><b>${fv(kk, RT[kk])}</b></td><td class="acc">${fv(kk, TT[kk])}</td>${anos.map(y => `<td class="${y > '2026' ? 'proj' : ''}">${fv(kk, Y[y][kk])}</td>`).join('')}</tr>`).join('');
+      const evoHead = `<th class="stick">Indicador</th><th class="acc">Realizado<br>até out/26</th><th class="acc">Total c/<br>projeção</th>${anos.map(y => `<th class="${y > '2026' ? 'proj' : ''}">${y === '2026' ? '2026*' : y}${y > '2026' ? '<br><span>proj.</span>' : y === '2026' ? '<br><span>real+proj.</span>' : '<br><span>real</span>'}</th>`).join('')}`;
       return `
       <div class="kpis">
         ${kpi('Receita líquida', money(k.receita), 'vendas − distratos')}
@@ -228,9 +246,9 @@
         ${kpi('Distribuições', money(k.distrib), 'lucro a terceiros + grupo')}
         ${kpi('Geração líquida', money(k.geracao), 'após sócios e financeiro', true)}
       </div>
-      ${card('Desempenho por empreendimento', 'R$ mil · valores negativos entre parênteses · AVOS = holding (despesas corporativas e recebimento de distribuições)',
-        `<div class="tbl-wrap"><table class="t"><thead><tr><th>Empreendimento</th><th class="l">Status</th><th>Receita líq.</th><th>Custos oper.</th><th>Resultado oper.</th><th>Margem</th><th>Financeiro</th><th>Aportes 3º</th><th>Retirada sócios</th><th>Distribuições</th><th>Geração líq.</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
-      <div style="margin-top:16px">${card('Evolução anual consolidada', 'R$ mil · 2026 até outubro', `<div class="tbl-wrap"><table class="t"><thead><tr><th>Indicador</th><th>Acumulado</th>${a.anos.map(y => `<th>${y}</th>`).join('')}</tr></thead><tbody>${evo}</tbody></table></div>`)}</div>
+      ${card('Desempenho por empreendimento', 'R$ mil · valores negativos entre parênteses · Receita Avos = receita líquida × % de participação da Avos (aba lista depara) · AVOS = holding',
+        `<div class="tbl-wrap"><table class="t"><thead><tr><th>Empreendimento</th><th class="l">Status</th><th>% Avos</th><th>Receita Avos</th><th>Receita líq.</th><th>Custos oper.</th><th>Resultado oper.</th><th>Margem</th><th>Financeiro</th><th>Aportes 3º</th><th>Retirada sócios</th><th>Distribuições</th><th>Geração líq.</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
+      <div style="margin-top:16px">${card('Evolução anual consolidada · todos os anos do fluxo', 'R$ mil · realizado até out/26; *2026 = jan–out realizado + nov–dez projetado; a partir de 2027, projeção pelas parcelas a vencer, impostos (4%) e obra prevista · receita líquida = vendas − distratos − comissões − impostos, como no Painel executivo · role para o lado para ver todos os anos', `<div class="tbl-wrap"><table class="t evo"><thead><tr>${evoHead}</tr></thead><tbody>${evo}</tbody></table></div>`)}</div>
       <div class="grid g2" style="margin-top:16px">
         ${card('Fluxo mensal realizado · últimos 24 meses', 'Entradas (receita − distratos) e saídas operacionais', cv('c_cx_mensal'))}
         ${card('Composição das saídas operacionais', 'Acumulado de todo o período (inclui previsão de obra)', cv('c_cx_comp'))}
@@ -251,7 +269,7 @@
         options: { indexAxis: 'y', scales: { x: moneyAxis, y: plainAxis }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + full(c.parsed.x) + ' · ' + pct(c.parsed.x / comp.reduce((a, b) => a + b[1], 0)) } } } } });
       const byY = {};
       projected().forEach(m => { const y = m.m.slice(0, 4); byY[y] = byY[y] || [0, 0]; byY[y][0] += m.avencer; byY[y][1] += -(m.obra + m.impostos); });
-      const ys = Object.keys(byY).filter(y => y <= '2036');
+      const ys = Object.keys(byY).filter(y => byY[y][0] + byY[y][1] > 500);
       saldoChart('c_cx_saldo');
       chart('c_cx_proj', { data: { labels: ys.map(y => y === '2026' ? 'nov–dez/26' : y), datasets: [bar('Receita a vencer', ys.map(y => byY[y][0]), C.s1), bar('Obra + impostos previstos', ys.map(y => byY[y][1]), C.s2)] },
         options: { scales: { x: plainAxis, y: moneyAxis }, plugins: { tooltip: moneyTip } } });

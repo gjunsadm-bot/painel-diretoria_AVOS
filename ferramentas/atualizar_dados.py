@@ -167,6 +167,15 @@ def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import dre_calc
     D['dre_all']=dre_calc.todas(a.caixa)
+    fl,part=dre_calc.fluxo_todos(a.caixa)
+    D['fluxo_mensal']=fl
+    D['fluxo_total']={k:sum(m[k] for m in fl) for k in fl[0] if k not in ('m','saldo')}
+    D['participacao']=part
+    # Recalcula em "Todos" o que nas planilhas depende de filtro (evita filtro salvo em um empreendimento)
+    D['vgv_kpi']=dre_calc.vgv_kpi_todos(D['vgv_emp'])
+    D['vgv_top']=dre_calc.vgv_top_todos(a.vgv)
+    so,st,sa,san=dre_calc.socios_todos(a.caixa)
+    D['socios'],D['socios_tot'],D['socios_anos'],D['socios_anual']=so,st,sa,san
     for k in ('dre','dre_ind','dre_saldo','dre_sel','dre_anos'): D.pop(k,None)
     D['gerado_em']=datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
     criptografar(D,a.usuario,a.senha,a.saida)

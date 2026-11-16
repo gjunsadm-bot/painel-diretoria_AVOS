@@ -140,3 +140,11 @@ table.t{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeri
   .top{flex-direction:column;align-items:flex-start}
 }
 @media print{.side{display:none}main{margin-left:0}.card,.kpi{break-inside:avoid}}
+
+.t td.avos{font-weight:600;background:#f6f8fc}
+.t.evo th span{font-size:9px;letter-spacing:.06em;color:var(--muted);font-weight:500}
+.t.evo th.proj,.t.evo td.proj{background:#fafaf8;color:#5f5e5a}
+.t.evo .acc{background:#f4f3ef}
+.t.evo .stick{position:sticky;left:0;background:#fff;z-index:1;min-width:200px}
+.t.evo th.stick{background:#faf9f7;z-index:2}
+.t.evo tr.total td.stick{background:#faf9f7}

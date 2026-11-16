@@ -126,3 +126,99 @@ if __name__=='__main__':
     for l in tb['linhas']: print(f"{l['lin'][:34]:34} {l['tot']:12.2f}", [round(x,1) for x in l['anos'][3:]])
     for a,b in tb['ind']: print(a,b)
     for o in R['opcoes']: print(o, round(R['dados'][o]['linhas'][0]['tot'],1), round(R['dados'][o]['linhas'][19]['tot'],1))
+
+# ======================= FLUXO DO GRUPO (Todos) =======================
+FCOLS = [('receita','Receita'),('distrato','Distrato'),('impostos','Impostos'),('terreno','Terreno (compra)'),('aprovacao','Aprovação'),('obra','Obra'),
+         ('comissao','Comissão Avos'),('marketing','Marketing + Plantão Vendas'),('adm','Administrativo'),('taxa','Taxa administrativa'),('fin','Financeiro'),
+         ('aporte_cap','Aporte de capital'),('aporte','Aporte de Sócio'),('retirada','Retirada Sócios'),('lucro_grupo','Lucro grupo'),('lucro_terc','Lucro a Terceiros')]
+
+def fluxo_todos(path):
+    base,lista,ind=ler(path)
+    areceber=[]; prev=[]; part={}
+    with open_workbook(path) as wb:
+        with wb.get_sheet('basecontasareceber') as sh:
+            for i,row in enumerate(sh.rows()):
+                if i==0: continue
+                v=[c.v for c in row]+[None]*25
+                d=xdate(v[11])
+                if d and low(v[20])=='a vencer' and isinstance(v[19],(int,float)): areceber.append((d,float(v[19])))
+        with wb.get_sheet('previsão obra bambuzal') as sh:
+            for i,row in enumerate(sh.rows()):
+                v=[c.v for c in row]+[None]*5
+                d=xdate(v[0])
+                if d and isinstance(v[1],(int,float)) and low(v[2])=='todos bambuzal': prev.append((d,low(v[3]),float(v[1])))
+        with wb.get_sheet('lista depara') as sh:
+            for i,row in enumerate(sh.rows()):
+                v=[c.v for c in row]+[None]*14
+                if i>0 and v[9] and isinstance(v[10],(int,float)): part[str(v[9]).strip().upper()]=float(v[10])
+    agg={}
+    for d,val,cat,_,_ in base:
+        agg[(d.year,d.month,cat)]=agg.get((d.year,d.month,cat),0)+val
+    out=[]; d=datetime.date(2019,1,1); saldo=0
+    proj_ini=datetime.date(2026,11,1)
+    while d<=datetime.date(2042,2,1):
+        m={'m':d.strftime('%Y-%m')}
+        for k,cat in FCOLS: m[k]=agg.get((d.year,d.month,low(cat)),0.0)
+        m['avencer']=sum(v for dd,v in areceber if dd.year==d.year and dd.month==d.month)
+        if d>=proj_ini: m['impostos']=-m['avencer']*0.04
+        m['obra']+=-sum(v for dd,c,v in prev if dd.year==d.year and dd.month==d.month and c=='obra')
+        m['aporte']+=m.pop('aporte_cap')
+        rec=m['receita']+m['distrato']+m['avencer']
+        cus=sum(m[k] for k in ('impostos','terreno','aprovacao','obra','comissao','marketing','adm','taxa'))
+        soc=m['aporte']+m['retirada']+m['lucro_grupo']+m['lucro_terc']
+        m['geracao']=rec+cus+m['fin']+soc; saldo+=m['geracao']; m['saldo']=saldo
+        out.append(m); d=datetime.date(d.year+(d.month==12),d.month%12+1,1)
+    return out, part
+
+# ======================= VGV (Todos) e SÓCIOS (Todos) =======================
+import re as _re
+def vgv_top_todos(vgv_path, n=10):
+    import openpyxl
+    wb=openpyxl.load_workbook(vgv_path,data_only=True,read_only=True)
+    ws=wb['vendidos']; it=ws.iter_rows(values_only=True); h=list(next(it))
+    ip,iv,ic,ik=h.index('Parceiro'),h.index('Valor Negociado'),h.index('Comissão'),h.index('Considerar')
+    g={}
+    for r in it:
+        if not r or r[ip] in (None,'') or r[ik]!=1: continue
+        a=g.setdefault(r[ip],[0,0.0,0.0]); a[0]+=1; a[1]+=float(r[iv] or 0); a[2]+=float(r[ic] or 0)
+    tot=sum(v[1] for v in g.values())
+    top=sorted(g.items(),key=lambda x:-x[1][1])[:n]
+    return [[i+1,k,float(v[0]),v[1],v[1]/tot if tot else 0,v[2]/v[1] if v[1] else 0] for i,(k,v) in enumerate(top)]
+
+def vgv_kpi_todos(emp):
+    t=next(e for e in emp if e['nome']=='Total')
+    return dict(vgv=t['vgv_total'],vendido=t['vgv_vendido'],estoque=t['estoque'],vso=t['vso'],lotes=t['lotes'],pct=t['vgv_vendido']/t['vgv_total'] if t['vgv_total'] else 0,
+                disp=t['disp'],vendas90=t['v90'],meses=t['meses'],desc=t['desconto'],inad=t['inad'],areceber=t['areceber'],vendasmes=t['vmes'],comissao=t['com_pct'],
+                vencido=t['vencido'],recebido=t['recebido'])
+
+SOC_CATS=['aporte de sócio','retirada sócios','lucro a terceiros']
+def socios_todos(path):
+    rows=[]; keys=[]
+    with open_workbook(path) as wb:
+        with wb.get_sheet('BASE PASSADO') as sh:
+            for i,row in enumerate(sh.rows()):
+                if i==0: continue
+                v=[c.v for c in row]+[None]*22
+                d=xdate(v[2]); c=low(v[19])
+                if d and c in SOC_CATS and isinstance(v[8],(int,float)): rows.append((d.year,c,float(v[8]),str(v[4] or '')))
+        with wb.get_sheet('Sócios e Terceiros') as sh:
+            for i,row in enumerate(sh.rows()):
+                if 9<=i<=25:
+                    v={c.c:c.v for c in row}
+                    if v.get(1) and v.get(8): keys.append((v[1],v[8]))
+    rx=lambda k: _re.compile('^'+'.*'.join(_re.escape(p) for p in str(k).split('*'))+'$' if False else '.*'+'.*'.join(_re.escape(p) for p in str(k).split('*'))+'.*',_re.I|_re.S)
+    out=[]; acc=[0,0,0,0]
+    for nome,k in keys:
+        r=rx(k); s=[0.0,0.0,0.0]; n=0
+        for y,c,val,desc in rows:
+            if r.match(desc): s[SOC_CATS.index(c)]+=val; n+=1
+        out.append([nome,s[0],s[1],s[2],sum(s),n])
+    tot=[sum(v for y,c,v,_ in rows if c==cc) for cc in SOC_CATS]
+    outros=[tot[i]-sum(o[i+1] for o in out) for i in range(3)]
+    out.append(['Outros (fornecedores / demais)',outros[0],outros[1],outros[2],sum(outros),len(rows)-sum(o[5] for o in out)])
+    T=sum(tot)
+    for o in out: o.insert(5, o[4]/T if T else 0)   # keep shape: nome,ap,ret,luc,liq,%,lanc  -> we only use idx0..4 and 6? adjust below
+    out=[[o[0],o[1],o[2],o[3],o[4],o[6]] for o in out]
+    anos=sorted({y for y,_,_,_ in rows if y>=2022})
+    anual=[sum(v for y,_,v,_ in rows if y==a) for a in anos]
+    return out,[tot[0],tot[1],tot[2],T,len(rows)],anos,anual
