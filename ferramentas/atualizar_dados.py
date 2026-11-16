@@ -165,12 +165,12 @@ def main():
     dump_xlsb(a.caixa,ABAS_CX,T['cx']); dump_xlsb(a.receber,ABAS_CR,T['cr']); dump_xlsx(a.vgv,ABAS_VGV,T['vgv'])
     D=extrair(T)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import dre_calc
-    D['dre_all']=dre_calc.todas(a.caixa)
-    fl,part=dre_calc.fluxo_todos(a.caixa)
+    import dre_calc, fluxo_calc
+    for k in ('dre','dre_ind','dre_saldo','dre_sel','dre_anos'): D.pop(k,None)
+    # Fluxo grupo e DRE recalculados a partir das bases (independe do filtro salvo na planilha)
+    D['dre_all'],D['receita_avos'],fl,D['participacao']=fluxo_calc.todas(a.caixa)
     D['fluxo_mensal']=fl
-    D['fluxo_total']={k:sum(m[k] for m in fl) for k in fl[0] if k not in ('m','saldo')}
-    D['participacao']=part
+    D['fluxo_total']={k:sum(m[k] for m in fl) for k in fl[0] if k not in ('m','saldo','avos')}
     # Recalcula em "Todos" o que nas planilhas depende de filtro (evita filtro salvo em um empreendimento)
     D['vgv_kpi']=dre_calc.vgv_kpi_todos(D['vgv_emp'])
     D['vgv_top']=dre_calc.vgv_top_todos(a.vgv)
