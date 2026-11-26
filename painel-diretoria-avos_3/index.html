@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Avos · Painel da Diretoria</title>
+<link rel="icon" type="image/png" href="assets/logo-avos-preto.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<section id="login" class="login">
+  <div class="login-card">
+    <img src="assets/logo-avos-preto.png" alt="Avos" class="login-logo">
+    <div class="login-title">Painel da Diretoria</div>
+    <div class="login-sub">Acesso restrito</div>
+    <form id="loginForm" autocomplete="on">
+      <label>Usuário<input id="user" name="username" autocomplete="username" required></label>
+      <label>Senha<input id="pass" name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit" id="loginBtn">Entrar</button>
+      <div id="loginMsg" class="login-msg" role="alert"></div>
+    </form>
+  </div>
+  <div class="login-foot">Avos Urbanismo · informações confidenciais</div>
+</section>
+
+<!-- ============ APP ============ -->
+<div id="app" class="app" hidden>
+  <aside class="side">
+    <img src="assets/logo-avos-branco.png" alt="Avos" class="side-logo">
+    <nav id="nav">
+      <a data-page="visao" class="active">Visão geral</a>
+      <a data-page="caixa">Caixa e resultado</a>
+      <a data-page="dre">DRE Empreendimentos</a>
+      <a data-page="vgv">VGV e vendas</a>
+      <a data-page="receber">Contas a receber</a>
+      <a data-page="cobranca">Cobrança</a>
+      <a data-page="grupo">Sócios, grupo e impostos</a>
+    </nav>
+    <div class="side-foot">
+      <div>Data base<br><b>31/10/2026</b></div>
+      <button id="logout" class="ghost">Sair</button>
+    </div>
+  </aside>
+  <main>
+    <header class="top">
+      <div>
+        <h1 id="pageTitle">Visão geral</h1>
+        <div id="pageSub" class="sub"></div>
+      </div>
+      <div class="top-right" id="geradoEm"></div>
+    </header>
+    <div id="pages"></div>
+  </main>
+</div>
+
+<div id="tip" class="tip" hidden></div>
+
+<script src="assets/chart.umd.min.js"></script>
+<script src="dados/dados.enc.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
