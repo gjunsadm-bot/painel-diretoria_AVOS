@@ -86,20 +86,35 @@ def extrair(T):
     D['fluxo_mensal']=mens
     D['fluxo_total']={v:g(fg[7],k) for k,v in cols.items()}
     # DRE
-    dre=cx['DRE por empreendimento']
-    D['dre_sel']=dre[5][2]
-    D['dre_anos']=[int(dre[9][c]) for c in range(4,12)]
-    D['dre']=[dict(lin=dre[i][1],tot=dre[i][2],pct=dre[i].get(3),anos=[dre[i].get(c,0) for c in range(4,12)]) for i in range(10,32) if 1 in dre[i]]
-    ind=[]
-    for i in range(10,35):
-        if 13 in dre[i]: ind.append([dre[i][13],dre[i].get(14)])
-    D['dre_ind']=ind
-    D['dre_saldo']=[[xd(dre[i][17]),dre[i][19]] for i in range(10,106) if 17 in dre[i]]
+    try:
+        dre=cx['DRE por empreendimento']
+        D['dre_sel']=dre[5][2]
+        D['dre_anos']=[int(dre[9][c]) for c in range(4,12)]
+        D['dre']=[dict(lin=dre[i][1],tot=dre[i][2],pct=dre[i].get(3),anos=[dre[i].get(c,0) for c in range(4,12)]) for i in range(10,32) if 1 in dre[i]]
+        ind=[]
+        for i in range(10,35):
+            if 13 in dre[i]: ind.append([dre[i][13],dre[i].get(14)])
+        D['dre_ind']=ind
+        D['dre_saldo']=[[xd(dre[i][17]),dre[i][19]] for i in range(10,106) if 17 in dre[i]]
+    except Exception: pass
     # Intercompany
     ic=cx['Intercompany']
-    D['ic_pos']=[[ic[i][8],ic[i][9],ic[i][10]] for i in range(40,51)]
-    D['ic_pares']=[[ic[i][13],ic[i][14],ic[i][15]] for i in range(24,36)]
-    D['ic_total']=ic[36][15]
+    # Intercompany: localiza os blocos pelo cabeçalho (o layout pode mudar de coluna)
+    def acha(txt):
+        for r in sorted(ic):
+            for c,v in ic[r].items():
+                if isinstance(v,str) and v.strip().startswith(txt): return r,c
+        raise KeyError(txt)
+    r0,c0=acha('Empresa')            # primeira ocorrência = SALDO POR PAR (Empresa A)
+    rp,cp=acha('POSIÇÃO LÍQUIDA')
+    pares=[];r=r0+1
+    while r in ic and isinstance(ic[r].get(c0),str) and ic[r].get(c0).strip()!='Total':
+        pares.append([ic[r][c0+5],ic[r][c0+6],ic[r][c0+7]]); r+=1
+    D['ic_pares']=pares; D['ic_total']=sum(p[2] for p in pares)
+    pos=[];r=rp+2
+    while r in ic and isinstance(ic[r].get(cp),str):
+        pos.append([ic[r][cp],ic[r][cp+1],ic[r][cp+2]]); r+=1
+    D['ic_pos']=pos
     # Investimento
     iv=cx['Investimento']
     D['inv']=[[iv[i][1],iv[i][2],iv[i][3],iv[i][4],iv[i][5],iv[i][6]] for i in range(38,51)]
@@ -138,9 +153,19 @@ def extrair(T):
     D['cob_kpi']=dict(vencido=r[1],parcelas=r[2],inad=r[3],multa=r[4])
     D['aging']=[[co[i][1],co[i][2],co[i][3],co[i][4]] for i in range(11,18)]
     D['top_dev']=[[co[i][1],co[i][2],co[i][3],co[i][4],co[i][5]] for i in range(22,32)]
+    # lista de clientes vencidos: localiza cabeçalho e fim da lista (layout pode mudar)
+    hdr=next(r for r in sorted(co) if co[r].get(1)=='Empreendimento' and co[r].get(3)=='Cliente')
+    H={str(v).strip().lower():k for k,v in co[hdr].items() if isinstance(v,str)}
+    col=lambda *names: next((H[n] for n in names if n in H),None)
+    cE,cL,cC,cI,cP,cV,cPg,cA=col('empreendimento'),col('lote'),col('cliente'),col('imobiliária'),col('parcelas vencidas'),col('valor vencido (r$)'),col('valor pago (r$)'),col('a vencer (r$)')
+    cEt,cD,cDs=col('etapa de cobrança'),col('data último evento'),col('descrição último evento')
+    fim=next((r for r in sorted(co) if r>hdr and str(co[r].get(1,'')).startswith('Inadimplência por imobiliária')),max(co)+1)
     cl=[]
-    for i in range(37,115):
-        if i in co: row=co[i]; cl.append([row.get(1),str(row.get(2,'')).replace('.0',''),row.get(3),row.get(4,''),row.get(5),row.get(6),row.get(7),row.get(8),row.get(9,''),xd(row[10]) if isinstance(row.get(10),float) else '',row.get(11,'')])
+    for i in range(hdr+1,fim):
+        row=co.get(i)
+        if not row or not row.get(cE) or not isinstance(row.get(cV),float): continue
+        g=lambda c,d='': row.get(c,d) if c is not None else d
+        cl.append([g(cE),str(g(cL)).replace('.0',''),g(cC),g(cI),g(cP),g(cV),g(cPg),g(cA),g(cEt),xd(g(cD)) if isinstance(g(cD),float) else '',g(cDs)])
     D['clientes']=cl
     D['imob_inad']=[[co[i][1],co[i][2],co[i][3],co[i][4],co[i][5]] for i in range(131,162)]
     fl=cr['4_Fluxo']

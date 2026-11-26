@@ -250,7 +250,7 @@
         const T = e.nome === 'Total do grupo', x = RA[e.nome] || {};
         return `<tr class="${T ? 'total' : ''}"><td>${esc(T ? 'Total do grupo' : title(e.nome))}</td><td class="l">${e.status ? statusChip(e.status) : ''}</td>
         <td class="dim">${x.pct == null ? '–' : pct(x.pct, Math.abs(x.pct * 100 - Math.round(x.pct * 100)) > 1e-6 ? 2 : 0)}</td>
-        <td class="avos">${T ? mil(recAvosTot) : x.avos == null ? '<span class="dim">–</span>' : mil(x.avos)}</td>
+        <td class="avos">${T ? mil(x.avos != null ? x.avos : recAvosTot) : x.avos == null ? '<span class="dim">–</span>' : mil(x.avos)}</td>
         <td>${mil(x.receitas)}</td><td>${mil(x.custos)}</td><td>${mil(x.resultado)}</td><td>${x.margem == null ? '<span class="dim">n.a.</span>' : pct(x.margem)}</td>
         <td>${mil(x.fin)}</td><td>${mil(x.aportes)}</td><td>${mil(x.retirada)}</td><td>${mil(x.distrib)}</td><td><b>${mil(x.geracao)}</b></td></tr>`; }).join('');
       return `
@@ -262,7 +262,7 @@
         ${kpi('Distribuições', money(k.distrib), 'lucro a terceiros + grupo')}
         ${kpi('Geração líquida', money(k.geracao), 'após sócios e financeiro', true)}
       </div>
-      ${card('Desempenho por empreendimento · fluxo completo (realizado + previsão)', 'R$ mil · mesmos totais da aba Fluxo grupo de cada empreendimento: Receitas = receita − distratos + parcelas a vencer; Custos = impostos, terreno, aprovação, obra (com previsão), comissão, marketing, administrativo e taxa; Distribuições = lucro grupo + lucro a terceiros · Receita Avos = coluna "Total Avos" da aba Fluxo grupo: (receitas realizadas − distratos + parcelas a vencer) × % de participação Avos (lista depara; Todos Bambuzal = 60%; sem % cadastrado = 100%); total = soma das linhas · AVOS = holding',
+      ${card('Desempenho por empreendimento · fluxo completo (realizado + previsão)', 'R$ mil · mesmos totais da aba Fluxo grupo de cada empreendimento: Receitas = receita − distratos + parcelas a vencer; Custos = impostos, terreno, aprovação, obra (com previsão), comissão, marketing, administrativo e taxa; Distribuições = lucro grupo + lucro a terceiros · Receita Avos = coluna "Total Avos" da aba Fluxo grupo: (receitas realizadas − distratos + parcelas a vencer) × % de participação Avos (lista depara; Todos Bambuzal = 60%; sem % cadastrado = 100%); total = Total Avos da Fluxo grupo em "Todos" (% de cada empreendimento) · AVOS = holding',
         `<div class="tbl-wrap"><table class="t"><thead><tr><th>Empreendimento</th><th class="l">Status</th><th>% Avos</th><th>Receita Avos</th><th>Receitas</th><th>Custos oper.</th><th>Resultado oper.</th><th>Margem</th><th>Financeiro</th><th>Aportes</th><th>Retirada sócios</th><th>Distribuições</th><th>Geração líq.</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
       <div style="margin-top:16px">${card('Evolução anual consolidada', 'R$ mil · valores da aba DRE por empreendimento com a seleção "Todos" (montada a partir da Fluxo grupo) · *2026 = jan–out realizado + nov–dez projetado · 2027+ = previsão (parcelas a vencer, impostos 4% e obra prevista) · margem = resultado operacional ÷ receita bruta, como na DRE', `<div class="tbl-wrap">${evoResumo()}</div>`)}</div>
       <div class="grid g2" style="margin-top:16px">
@@ -321,7 +321,7 @@
         $('#dreInd').innerHTML = X.ind.map(([n, v]) => v == null ? `<div class="h">${esc(n)}</div>` : `<div class="r"><span>${esc(n)}</span><b>${fmtI(v)}</b></div>`).join('');
         const first = X.saldo.findIndex(x => Math.abs(x[1]) > 0.5);
         const s = first < 0 ? [] : X.saldo.slice(first);
-        $('#dreChartNote').textContent = 'Fluxo mensal acumulado (receitas + custos + financeiro), jan/19 a dez/26 · ' + $('#dreSel').selectedOptions[0].text;
+        $('#dreChartNote').textContent = 'Fluxo mensal acumulado (receitas + custos + recuperação + financeiro), todo o período · ' + $('#dreSel').selectedOptions[0].text;
         chart('c_dre_saldo', { type: 'line', data: { labels: s.map(x => ym(x[0])), datasets: [{ label: 'Saldo acumulado', data: s.map(x => x[1]), borderColor: C.ink, backgroundColor: 'rgba(28,28,27,.06)', fill: true, tension: .2 }] },
           options: { interaction: { mode: 'index', intersect: false }, scales: { x: Object.assign({}, plainAxis, { ticks: { maxRotation: 0, maxTicksLimit: 14 } }), y: moneyAxis }, plugins: { legend: { display: false }, tooltip: moneyTip } } });
       };
@@ -472,12 +472,12 @@
       ${card('Inadimplência por imobiliária', 'Imobiliárias com valor inadimplente · % sobre o valor vendido no tooltip', cv('c_cob_imob', 'tall'))}
       <div style="margin-top:16px">${card('Todos os clientes com parcelas vencidas', 'Filtre por empreendimento, etapa de cobrança ou busque por nome',
         `<div class="toolbar"><select id="fEmp"><option value="">Todos os empreendimentos</option>${emps.map(e => `<option>${esc(e)}</option>`).join('')}</select>
-          <select id="fEt"><option value="">Todas as etapas</option>${etapas.map(e => `<option>${esc(e)}</option>`).join('')}</select>
+          <select id="fEt"${etapas.length ? '' : ' hidden'}><option value="">Todas as etapas</option>${etapas.map(e => `<option>${esc(e)}</option>`).join('')}</select>
           <input id="fQ" type="search" placeholder="Buscar cliente, lote ou imobiliária"><span class="count" id="fCount"></span></div>
-         <div class="tbl-wrap scroll"><table class="t" id="tCli"><thead><tr>
+         <div class="tbl-wrap scroll"><table class="t${etapas.length ? '' : ' noet'}" id="tCli"><thead><tr>
           <th class="l sortable" data-k="0">Empreend.</th><th class="l sortable" data-k="1">Lote</th><th class="l sortable" data-k="2">Cliente</th><th class="l sortable" data-k="3">Imobiliária</th>
           <th class="sortable" data-k="4">Parc.</th><th class="sortable" data-k="5">Vencido</th><th class="sortable" data-k="6">Pago</th><th class="sortable" data-k="7">A vencer</th>
-          <th class="l sortable" data-k="8">Etapa</th><th class="l sortable" data-k="9">Últ. evento</th><th class="l">Descrição</th></tr></thead><tbody></tbody></table></div>`)}</div>`;
+          <th class="l sortable et" data-k="8">Etapa</th><th class="l sortable" data-k="9">Últ. evento</th><th class="l">Descrição</th></tr></thead><tbody></tbody></table></div>`)}</div>`;
     },
     charts() {
       const a = D.aging.slice(0, -1); const AG = ['1–30', '31–60', '61–90', '91–180', '181–365', '> 365'];
@@ -496,7 +496,7 @@
         rows.sort((x, y) => { const a = x[sortK], b = y[sortK]; return (typeof a === 'number' ? a - b : String(a).localeCompare(String(b), 'pt-BR')) * dir; });
         const tv = rows.reduce((s, c) => s + (c[5] || 0), 0);
         $('#fCount').textContent = rows.length + ' clientes · ' + full(tv) + ' vencidos';
-        $('#tCli tbody').innerHTML = rows.map(c => `<tr><td>${sw(EMP_COLOR[c[0]] || '#bbb')}${esc(title(c[0]))}</td><td class="l">${esc(c[1])}</td><td class="l wrap2">${esc(c[2])}</td><td class="l wrap2">${esc(c[3])}</td><td>${int(c[4])}</td><td><b>${full(c[5])}</b></td><td>${full(c[6])}</td><td>${full(c[7])}</td><td class="l">${c[8] ? statusChip(c[8]) : ''}</td><td class="l">${c[9] ? c[9].split('-').reverse().join('/') : '<span class="dim">–</span>'}</td><td class="wrap">${esc(c[10])}</td></tr>`).join('');
+        $('#tCli tbody').innerHTML = rows.map(c => `<tr><td>${sw(EMP_COLOR[c[0]] || '#bbb')}${esc(title(c[0]))}</td><td class="l">${esc(c[1])}</td><td class="l wrap2">${esc(c[2])}</td><td class="l wrap2">${esc(c[3])}</td><td>${int(c[4])}</td><td><b>${full(c[5])}</b></td><td>${full(c[6])}</td><td>${full(c[7])}</td><td class="l et">${c[8] ? statusChip(c[8]) : ''}</td><td class="l">${c[9] ? c[9].split('-').reverse().join('/') : '<span class="dim">–</span>'}</td><td class="wrap">${esc(c[10])}</td></tr>`).join('');
       };
       ['#fEmp', '#fEt'].forEach(s => $(s).addEventListener('change', render));
       $('#fQ').addEventListener('input', render);

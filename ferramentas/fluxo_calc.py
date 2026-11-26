@@ -8,9 +8,12 @@ def xdate(v):
 
 # colunas da Fluxo grupo (cabeçalho da linha 4) na ordem D..W, exceto F/G/H calculadas
 COLS = [('receita','Receita'),('distrato','Distrato'),('impostos','Impostos'),('terreno','Terreno (compra)'),('aprovacao','Aprovação'),('obra','Obra'),
-        ('comissao','Comissão Avos'),('marketing','Marketing + Plantão Vendas'),('adm','Administrativo'),('taxa','Taxa administrativa'),('fin','Financeiro'),
+        ('comissao','Comissão Avos'),('marketing','Marketing + Plantão Vendas'),('adm','Administrativo'),('taxa','Taxa administrativa'),('transf','Transf. Entre contas'),
+        ('recup','Recuperação de despesa'),('fin','Financeiro'),
         ('aporte_cap','Aporte de capital'),('aporte_soc','Aporte de Sócio'),('retirada','Retirada Sócios'),('lucro_grupo','Lucro grupo'),('lucro_terc','Lucro a Terceiros')]
-CUSTOS = ['impostos','terreno','aprovacao','obra','comissao','marketing','adm','taxa']
+CUSTOS = ['impostos','terreno','aprovacao','obra','comissao','marketing','adm','taxa','transf']   # col R da Fluxo grupo
+LUCRO_TERC_PROJ = 0.352   # Fluxo grupo col Y a partir de nov/26: -(G × 35,2%)
+TAXA_ADM_PROJ = 0.03      # aba PROJEÇÃO TAXA ADMINISTRATIVA: 3% das parcelas a vencer
 OPCOES = ['BELLEVIE','VILLA NOAH','Todos Bambuzal','VICTÓRIA GARDEN','AVOS','HIRAIWA','UNA','NELSON E MARCELO','Todos']
 INICIO = datetime.date(2019,1,1); FIM = datetime.date(2042,2,1); PROJ = datetime.date(2026,11,1)
 
@@ -34,11 +37,17 @@ class Base:
                     if i==0: continue
                     v=[c.v for c in row]+[None]*25
                     d=xdate(v[11])
-                    if d and low(v[20])=='a vencer' and isinstance(v[19],(int,float)): self.rec.append((d,float(v[19]),low(v[1]),low(v[23])))
-            with wb.get_sheet('previsão obra bambuzal') as sh:
+                    if d and low(v[20])=='a vencer':
+                        self.rec.append((d,float(v[19]) if isinstance(v[19],(int,float)) else 0.0,low(v[1]),low(v[23]),float(v[10]) if isinstance(v[10],(int,float)) else 0.0))
+            nome_prev=[n for n in wb.sheets if low(n).startswith('previsão') and 'bambuzal' in low(n)][0]
+            with wb.get_sheet(nome_prev) as sh:
                 for row in sh.rows():
-                    v=[c.v for c in row]+[None]*5; d=xdate(v[0])
-                    if d and isinstance(v[1],(int,float)) and low(v[2])=='todos bambuzal': self.prev.append((d,low(v[3]),float(v[1])))
+                    v=[c.v for c in row]+[None]*12
+                    d=xdate(v[0])
+                    if d and isinstance(v[1],(int,float)) and low(v[2])=='todos bambuzal': self.prev.append((d,low(v[3]),float(v[1]),1))
+                    d2=xdate(v[7])
+                    if d2 and isinstance(v[8],(int,float)) and low(v[9])=='todos bambuzal': self.prev.append((d2,low(v[10]),float(v[8]),2))
+            self.part_todos=[]
             with wb.get_sheet('lista depara') as sh:
                 for i,row in enumerate(sh.rows()):
                     v=[c.v for c in row]+[None]*14
@@ -46,6 +55,7 @@ class Base:
                     if 1<=i<=13 and v[0]: self.lista.append((str(v[0]),str(v[1])))
                     if v[4] and v[5]: self.ind.append((low(v[4]),low(v[5]),v[6] if isinstance(v[6],(int,float)) else 0.0))
                     if 2<=i<=9 and v[9]: self.part[str(v[9]).strip().upper()]=(v[10],str(v[11] or ''))
+                    if 2<=i<=15 and v[9]: self.part_todos.append((str(v[9]).strip(),v[10],str(v[11] or '')))
         self.individuais=[low(a) for a,_ in self.lista[:12]]
         self.grupos_rec={r[3] for r in self.rec}
 
@@ -58,37 +68,71 @@ class Base:
         if sel=='Todos': return None
         return 1.0
 
+    def _pct_todos(self):
+        vals=[float(v) for _,v,e in self.part_todos if isinstance(v,(int,float)) and e.upper()=='BAMBUZAL']
+        avg=sum(vals)/len(vals) if vals else 0
+        out={}
+        for n,v,e in self.part_todos:
+            out[low(n)]=float(v) if isinstance(v,(int,float)) else (avg if n.upper()=='BAMBUZAL' else 0.0)
+        return out
+
     def fluxo(self, sel):
         s=low(sel)
         if sel=='Todos': fb=lambda r: True
         elif s in self.individuais: fb=lambda r: r[3]==s
         else: fb=lambda r: r[4]==s
         if sel=='Todos': fr=lambda r: True
-        elif s in self.grupos_rec: fr=lambda r: r[3]==s
-        else: fr=lambda r: r[2]==s
+        elif s in self.individuais: fr=lambda r: r[2]==s          # basecontasareceber col B
+        else: fr=lambda r: r[3]==s                                # col X (grupo)
         agg={}
         for d,val,cat,_,_ in filter(fb,self.base): k=(d.year,d.month,cat); agg[k]=agg.get(k,0)+val
         av={}
-        for d,val,_,_ in filter(fr,self.rec): k=(d.year,d.month); av[k]=av.get(k,0)+val
+        for r in filter(fr,self.rec): k=(r[0].year,r[0].month); av[k]=av.get(k,0)+r[1]
         pv={}
         if sel in ('Todos','Todos Bambuzal'):
-            for d,c,val in self.prev:
-                if c=='obra': k=(d.year,d.month); pv[k]=pv.get(k,0)+val
-        pct=self.pct_avos(sel)
+            for d,c,val,blk in self.prev:
+                col='obra' if (blk==1 and c=='obra') else 'marketing' if (blk==2 and c=='marketing + plantão vendas') else None
+                if col: k=(d.year,d.month,col); pv[k]=pv.get(k,0)+val
+        # projeção taxa administrativa (aba PROJEÇÃO TAXA ADMINISTRATIVA)
+        tx={}
+        def tsum(grp):
+            o={}
+            for r in self.rec:
+                if r[3]==grp and r[0]>=PROJ: k=(r[0].year,r[0].month); o[k]=o.get(k,0)+r[1]
+            return o
+        bel=tsum('bellevie'); tb=tsum('todos bambuzal')
+        for k in set(bel)|set(tb):
+            C=-bel.get(k,0)*TAXA_ADM_PROJ; H=-tb.get(k,0)*TAXA_ADM_PROJ; L=-H-C
+            tx[k]={'todos':C+H+L,'bellevie':C,'todos bambuzal':H,'avos':L}.get(s,0.0)
+        # Total Avos (col H)
+        if sel=='Todos':
+            pt=self._pct_todos(); avk={}
+            for d,val,cat,q,_ in self.base:
+                if cat in ('receita','distrato') and pt.get(q): k=(d.year,d.month); avk[k]=avk.get(k,0)+val*pt[q]
+            for r in self.rec:
+                if pt.get(r[2]): k=(r[0].year,r[0].month); avk[k]=avk.get(k,0)+r[4]*pt[r[2]]
+            pct=None
+        else:
+            pct=self.pct_avos(sel); avk=None
         out=[]; saldo=0
         for d in meses():
+            k2=(d.year,d.month)
             m={'m':d.strftime('%Y-%m')}
             for k,cat in COLS: m[k]=agg.get((d.year,d.month,low(cat)),0.0)
-            m['avencer']=av.get((d.year,d.month),0.0)
-            if d>=PROJ: m['impostos']=-m['avencer']*0.04
-            m['obra']+=-pv.get((d.year,d.month),0.0)
+            m['avencer']=av.get(k2,0.0)
+            if d>=PROJ:
+                m['impostos']=-m['avencer']*0.04
+            m['obra']+=-pv.get((d.year,d.month,'obra'),0.0)
+            m['marketing']+=-pv.get((d.year,d.month,'marketing'),0.0)
+            m['taxa']+=tx.get(k2,0.0)
             m['receitas']=m['receita']+m['distrato']+m['avencer']           # col G
-            m['avos']=m['receitas']*pct if pct is not None else None         # col H
-            m['custos']=sum(m[k] for k in CUSTOS)                             # col Q
-            m['socios']=m['aporte_cap']+m['aporte_soc']+m['retirada']+m['lucro_grupo']+m['lucro_terc']  # col X
-            m['geracao']=m['receitas']+m['custos']+m['fin']+m['socios']      # col Y
+            if d>=PROJ: m['lucro_terc']=-(m['receitas']*LUCRO_TERC_PROJ)     # col Y projetado
+            m['avos']=(avk.get(k2,0.0) if avk is not None else (m['receitas']*pct if pct is not None else None))  # col H
+            m['custos']=sum(m[k] for k in CUSTOS)                             # col R
+            m['socios']=m['aporte_cap']+m['aporte_soc']+m['retirada']+m['lucro_grupo']+m['lucro_terc']  # col Z
+            m['geracao']=m['receitas']+m['custos']+m['fin']+m['socios']+m['recup']   # col AA
             saldo+=m['geracao']; m['saldo']=saldo; out.append(m)
-        return out, pct
+        return out, (pct if sel!='Todos' else None)
 
 def _irr(fl):
     npv=lambda r: sum(f/(1+r)**i for i,f in enumerate(fl))
@@ -109,8 +153,8 @@ def dre(B, sel):
     def by(key): return [sum(m[key] for m in fl if yr(m)==a)/1000 for a in anos]
     rb=by('receitas'); dis=by('distrato'); com=by('comissao'); imp=by('impostos')
     rl=[a+b+c for a,b,c in zip(rb,com,imp)]
-    ob,te,ap,mk,ad,tx=by('obra'),by('terreno'),by('aprovacao'),by('marketing'),by('adm'),by('taxa')
-    ro=[a+b+c+d+e+f+g for a,b,c,d,e,f,g in zip(rl,ob,te,ap,mk,ad,tx)]
+    ob,te,ap,mk,ad,tx,rc,tr=by('obra'),by('terreno'),by('aprovacao'),by('marketing'),by('adm'),by('taxa'),by('recup'),by('transf')
+    ro=[sum(x) for x in zip(rl,ob,te,ap,mk,ad,tx,rc,tr)]
     fi=by('fin'); fa=[a+b for a,b in zip(ro,fi)]
     apo=[a+b for a,b in zip(by('aporte_cap'),by('aporte_soc'))]; ret=by('retirada'); lt=by('lucro_terc'); lg=by('lucro_grupo')
     gl=[a+b+c+d+e for a,b,c,d,e in zip(fa,apo,ret,lt,lg)]
@@ -120,7 +164,7 @@ def dre(B, sel):
     T=sum; R=T(rb)
     L=[('Receita bruta de vendas (receitas + a vencer)',rb),('(−) Distratos (já incluso na receita)',dis),('(−) Comissões de vendas',com),('(−) Impostos',imp),
        ('(=) Receita líquida',rl),('(−) Obras e infraestrutura',ob),('(−) Terreno (compra)',te),('(−) Aprovação de projetos',ap),('(−) Marketing e plantão de vendas',mk),
-       ('(−) Administrativo',ad),('(±) Taxa de administração',tx),('(=) Resultado operacional',ro),('Margem operacional',mg),('(±) Resultado financeiro',fi),
+       ('(−) Administrativo',ad),('(±) Taxa de administração',tx),('(+) Recuperação de despesa',rc),('(±) Transferências entre contas',tr),('(=) Resultado operacional',ro),('Margem operacional',mg),('(±) Resultado financeiro',fi),
        ('(=) Fluxo antes dos sócios',fa),('(+) Aportes de terceiro',apo),('(−) Retirada de sócios',ret),('(−) Lucro distribuído a terceiros',lt),
        ('(±) Lucro grupo (intercompany)',lg),('(=) Geração de caixa líquida',gl),('Saldo de caixa inicial',ini),('Saldo de caixa final',fin_)]
     linhas=[]
@@ -142,7 +186,7 @@ def dre(B, sel):
     preco=dv(C10+C11,L13); precom2=dv(preco*L13,A11)
     custo=C15; fa_t=C('(=) Fluxo antes')*1000
     # fluxo mensal antes dos sócios 2019-01..2026-12 (como na planilha: G+Q+R)
-    mm=[m for m in fl if m['m']<='2026-12']; ms=[m['receitas']+m['custos']+m['fin'] for m in mm]
+    mm=list(fl); ms=[m['receitas']+m['custos']+m['recup']+m['fin'] for m in mm]   # DRE col T: G+R+S+T, todos os meses
     acc=[];s=0
     for v in ms: s+=v; acc.append(s)
     expo=min(0,min(acc)) if acc else 0; r=_irr(ms)
@@ -168,8 +212,8 @@ def todas(path):
     avos={}
     def linha(fl,p):
         T=lambda k: sum(m[k] for m in fl)
-        rec=T('receitas'); cus=T('custos')
-        return dict(pct=p,avos=(T('avos') if p is not None else None),receita=T('receita'),distrato=T('distrato'),avencer=T('avencer'),receitas=rec,custos=cus,
+        rec=T('receitas'); cus=T('custos')+T('recup')
+        return dict(pct=p,avos=(sum(m['avos'] for m in fl) if all(m['avos'] is not None for m in fl) else None),receita=T('receita'),distrato=T('distrato'),avencer=T('avencer'),receitas=rec,custos=cus,
                     resultado=rec+cus,margem=((rec+cus)/rec if rec>0 else None),fin=T('fin'),aportes=T('aporte_cap')+T('aporte_soc'),retirada=T('retirada'),
                     lucro_grupo=T('lucro_grupo'),lucro_terc=T('lucro_terc'),distrib=T('lucro_grupo')+T('lucro_terc'),socios=T('socios'),geracao=T('geracao'))
     for e in emps:
